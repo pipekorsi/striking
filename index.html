@@ -176,9 +176,10 @@ const S = {q:'',who:new Set(),books:new Set(),allBooks:false,types:new Set(),tow
 const defaults = () => JSON.stringify([S.q,[...S.who],[...S.books],S.allBooks,[...S.types],S.town,[...S.areas],[...S.acc],S.minBooks,S.noFic]);
 const DEF = defaults();
 const KEY='striking-state-v1';
+try{ localStorage.removeItem(KEY); }catch(e){} // older versions kept this permanently; now it only lasts for the session
 function loadState(){
   try{
-    const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(!o) return null;
+    const o=JSON.parse(sessionStorage.getItem(KEY)||'null'); if(!o) return null;
     S.q=o.q||''; S.who=new Set(o.who||[]); S.books=new Set(o.books||[]); S.allBooks=!!o.allBooks; S.types=new Set(o.types||[]);
     S.town=o.town||''; S.areas=new Set(o.areas||[]); S.acc=new Set(o.acc||[]); S.minBooks=+o.minBooks||1; S.noFic=!!o.noFic;
     return o;
@@ -186,8 +187,8 @@ function loadState(){
 }
 function saveState(extra){
   try{
-    const o=Object.assign(JSON.parse(localStorage.getItem(KEY)||'{}'),{q:S.q,who:[...S.who],books:[...S.books],allBooks:S.allBooks,types:[...S.types],town:S.town,areas:[...S.areas],acc:[...S.acc],minBooks:S.minBooks,noFic:S.noFic},extra||{});
-    localStorage.setItem(KEY,JSON.stringify(o));
+    const o=Object.assign(JSON.parse(sessionStorage.getItem(KEY)||'{}'),{q:S.q,who:[...S.who],books:[...S.books],allBooks:S.allBooks,types:[...S.types],town:S.town,areas:[...S.areas],acc:[...S.acc],minBooks:S.minBooks,noFic:S.noFic},extra||{});
+    sessionStorage.setItem(KEY,JSON.stringify(o));
   }catch(e){}
 }
 const saved=loadState();
