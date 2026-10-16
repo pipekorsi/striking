@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strike Map</title>
+<meta name="description" content="Every real place Cormoran Strike and Robin Ellacott visit in the Strike novels, on an interactive map.">
+<meta name="theme-color" content="#1f2937">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
+<style>
+:root{
+  --bg:#f7f5f1; --panel:#ffffff; --ink:#1f2937; --muted:#6b7280; --line:#e5e1d8; --accent:#8b1e3f;
+  --strike:#1d63c4; --robin:#d9480f; --both:#7b3fa0; --chip:#efece5; --chip-on:#1f2937; --chip-on-ink:#fff;
+  --shadow:0 4px 18px rgba(0,0,0,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14161a; --panel:#1d2026; --ink:#eceae4; --muted:#9aa0a8; --line:#2d3139; --accent:#e25a80;
+    --chip:#2a2e36; --chip-on:#eceae4; --chip-on-ink:#14161a; --shadow:0 4px 18px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14161a; --panel:#1d2026; --ink:#eceae4; --muted:#9aa0a8; --line:#2d3139; --accent:#e25a80;
+  --chip:#2a2e36; --chip-on:#eceae4; --chip-on-ink:#14161a; --shadow:0 4px 18px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden;-webkit-text-size-adjust:100%}
+#app{position:fixed;inset:0;display:flex}
+#map{flex:1;height:100%;z-index:1}
+.leaflet-container{font:inherit}
+
+/* top bar */
+#bar{position:absolute;z-index:500;top:max(10px,env(safe-area-inset-top));left:10px;right:10px;display:flex;gap:8px;pointer-events:none}
+#bar>*{pointer-events:auto}
+#search{flex:1;min-width:0;height:44px;border:0;border-radius:22px;padding:0 16px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow);font-size:16px;outline:none}
+.btn{height:44px;min-width:44px;border:0;border-radius:22px;padding:0 14px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow);font:600 14px inherit;font-family:inherit;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn .dot{background:var(--accent);color:#fff;border-radius:10px;font-size:12px;padding:1px 7px;display:none}
+.btn.has .dot{display:inline-block}
+#count{position:absolute;z-index:450;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));background:var(--panel);color:var(--ink);border-radius:16px;padding:6px 12px;box-shadow:var(--shadow);font-size:13px;font-weight:600}
+#fab{position:absolute;z-index:450;right:10px;bottom:calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px}
+#fab .btn{padding:0;justify-content:center;width:44px;font-size:20px}
+
+/* side panels */
+.panel{position:absolute;z-index:800;background:var(--panel);color:var(--ink);box-shadow:var(--shadow);display:none;flex-direction:column}
+.panel.open{display:flex}
+.panel header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.panel h2{margin:0;font-size:17px}
+.panel .body{overflow-y:auto;padding:6px 16px 20px;-webkit-overflow-scrolling:touch;flex:1}
+.x{border:0;background:var(--chip);color:var(--ink);width:32px;height:32px;border-radius:16px;font-size:18px;cursor:pointer}
+.link{border:0;background:none;color:var(--accent);font:600 14px inherit;font-family:inherit;cursor:pointer;padding:6px 0}
+@media (min-width:760px){
+  .panel{top:66px;left:10px;bottom:10px;width:360px;border-radius:14px}
+  #listPanel{left:auto;right:10px}
+  body.sheet.fp #count{left:380px}
+}
+@media (max-width:759px){
+  .panel{left:0;right:0;bottom:0;height:78vh;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+  #count{bottom:calc(10px + env(safe-area-inset-bottom))}
+  body.sheet #fab,body.sheet #count{display:none}
+}
+
+/* filters */
+.group{padding:12px 0 6px;border-bottom:1px solid var(--line)}
+.group:last-child{border-bottom:0}
+.group h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:0;background:var(--chip);color:var(--ink);border-radius:16px;padding:7px 11px;font:500 13.5px inherit;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:34px}
+.chip.on{background:var(--chip-on);color:var(--chip-on-ink)}
+.chip .n{opacity:.55;font-size:12px}
+.chip .sw{width:10px;height:10px;border-radius:50%}
+select{width:100%;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:16px;padding:0 10px;font-family:inherit}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0}
+.row label{flex:1;font-size:14px}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.tiny{font-size:12px;color:var(--muted);margin:6px 0 0}
+
+/* list */
+.item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;align-items:flex-start}
+.item .ic{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:17px;color:#fff}
+.item .t{font-weight:600;font-size:14.5px;line-height:1.25}
+.item .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.item .d{margin-left:auto;font-size:12.5px;color:var(--muted);white-space:nowrap;padding-left:6px}
+
+/* pins */
+.pin{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);color:#fff;line-height:1}
+.pin.Strike{background:var(--strike)} .pin.Robin{background:var(--robin)} .pin.Both{background:var(--both)}
+.pin.street{border-radius:8px}
+.pin.approx{border-style:dashed;opacity:.8;border-color:#fff}
+.ic.Strike{background:var(--strike)} .ic.Robin{background:var(--robin)} .ic.Both{background:var(--both)}
+.me{width:16px;height:16px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25)}
+.marker-cluster div{font-weight:700}
+.marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{background:rgba(139,30,63,.25)}
+.marker-cluster-small div,.marker-cluster-medium div,.marker-cluster-large div{background:var(--accent);color:#fff}
+
+/* popup */
+.leaflet-popup-content-wrapper{border-radius:14px;background:var(--panel);color:var(--ink)}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:14px 16px;width:min(300px,70vw)!important;font-size:14px}
+.pop h4{margin:0 0 6px;font-size:16px;line-height:1.25}
+.badges{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.badge{font-size:12px;border-radius:10px;padding:2px 8px;background:var(--chip);color:var(--ink)}
+.badge.Strike{background:var(--strike);color:#fff}.badge.Robin{background:var(--robin);color:#fff}.badge.Both{background:var(--both);color:#fff}
+.pop .k{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:8px}
+.pop p{margin:2px 0 0}
+.pop .links{display:flex;gap:12px;margin-top:10px}
+.pop a{color:var(--accent);font-weight:600;text-decoration:none}
+.pop .warn{font-size:12.5px;color:var(--muted);margin-top:8px}
+.leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
+.attrib-note{font-size:11px;color:var(--muted);margin-top:14px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+
+  <div id="bar">
+    <input id="search" type="search" placeholder="Search places…" autocomplete="off" aria-label="Search places">
+    <button class="btn" id="btnFilters" aria-label="Filters">⚙︎ <span>Filters</span><span class="dot" id="fdot">0</span></button>
+    <button class="btn" id="btnList" aria-label="List">☰ <span>List</span></button>
+  </div>
+
+  <div id="count">…</div>
+  <div id="fab">
+    <button class="btn" id="btnFit" title="Zoom to results" aria-label="Zoom to results">⤢</button>
+    <button class="btn" id="btnLoc" title="Show my location" aria-label="Show my location">◎</button>
+  </div>
+
+  <section class="panel" id="filterPanel" aria-label="Filters">
+    <header><h2>Filters</h2><div><button class="link" id="reset">Reset</button> <button class="x" data-close aria-label="Close">×</button></div></header>
+    <div class="body" id="filterBody"></div>
+  </section>
+
+  <section class="panel" id="listPanel" aria-label="Places list">
+    <header><h2 id="listTitle">Places</h2><div><button class="link" id="sortBtn">Sort: A–Z</button> <button class="x" data-close aria-label="Close">×</button></div></header>
+    <div class="body" id="listBody"></div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="data.js"></script>
+<script>
+(function(){
+const P = window.PLACES || [];
+const BOOKS = [
+  ['CC',"The Cuckoo's Calling"],['S','The Silkworm'],['CoE','Career of Evil'],['LW','Lethal White'],
+  ['TB','Troubled Blood'],['IBH','The Ink Black Heart'],['TRG','The Running Grave'],['THM','The Hallmarked Man']];
+const BOOKNAME = Object.fromEntries(BOOKS);
+const TYPE_ICON = {
+  'Hotel':'🏨','Pub / bar':'🍺','Restaurant / cafe':'🍽️','Street / corner':'🛣️','Home / residence':'🏠','Office / workplace':'💼',
+  'Shop / department store':'🛍️','Church / cemetery':'⛪','Hospital / police / prison':'🏥','Theatre / club / culture':'🎭',
+  'Park / landmark / outdoors':'🌳','Transport / services':'🚉','Town / village / region':'📍'};
+const ACC = {exact:['building','landmark'], street:['street','square']};
+const accOf = p => ACC.exact.includes(p.prec) ? 'exact' : ACC.street.includes(p.prec) ? 'street' : 'approx';
+P.forEach(p=>{p.acc=accOf(p); p.hay=(p.n+' '+p.notes+' '+p.town+' '+p.area+' '+p.type).toLowerCase();});
+
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $ = id => document.getElementById(id);
+const uniq = a => [...new Set(a)];
+const count = (arr,fn)=>arr.reduce((m,x)=>{const k=fn(x);m[k]=(m[k]||0)+1;return m},{});
+
+/* ---------- state ---------- */
+const S = {q:'',who:new Set(),books:new Set(),allBooks:false,types:new Set(),town:'',areas:new Set(),acc:new Set(),minBooks:1,noFic:false};
+const defaults = () => JSON.stringify([S.q,[...S.who],[...S.books],S.allBooks,[...S.types],S.town,[...S.areas],[...S.acc],S.minBooks,S.noFic]);
+const DEF = defaults();
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false,tap:true}).setView([51.512,-0.128],12);
+L.control.zoom({position:'topright'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+const cluster = L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:42,spiderfyOnMaxZoom:true,disableClusteringAtZoom:18});
+map.addLayer(cluster);
+const markers = new Map();
+
+function icon(p){
+  const cls = `pin ${p.who} ${p.acc==='street'?'street':''} ${p.acc==='approx'?'approx':''}`;
+  return L.divIcon({className:'',html:`<div class="${cls}">${TYPE_ICON[p.type]||'📍'}</div>`,iconSize:[32,32],iconAnchor:[16,16],popupAnchor:[0,-14]});
+}
+const PRECTXT = {building:'Exact building',landmark:'Exact landmark',street:'Street / corner (no single building)',square:'Square',
+  area:'Approximate area',district:'Approximate district',town:'Town / village centre',village:'Village centre',city:'City centre',county:'County (rough)',country:'Country (rough)'};
+function popup(p){
+  const bks = p.books.map(b=>`<span class="badge">${esc(BOOKNAME[b]||b)}</span>`).join('');
+  const ll = p.lat+','+p.lon;
+  const warn = [];
+  if (p.acc==='street') warn.push('Pin marks the street or corner, not a single building.');
+  else if (p.acc==='approx') warn.push('Pin is approximate: '+(PRECTXT[p.prec]||p.prec).toLowerCase()+'.');
+  if (p.fic) warn.push('The venue itself is fictional (or partly) in the books; the location shown is the real street or area.');
+  return `<div class="pop"><h4>${esc(p.n)}</h4>
+    <div class="badges"><span class="badge ${p.who}">${p.who==='Both'?'Strike & Robin':p.who}</span><span class="badge">${TYPE_ICON[p.type]||''} ${esc(p.type)}</span>${p.area?`<span class="badge">${esc(p.area)}</span>`:`<span class="badge">${esc(p.town)}</span>`}</div>
+    <div class="k">Books</div><div class="badges" style="margin:3px 0 0">${bks}</div>
+    <div class="k">Chapters</div><p>${esc(p.ch)}</p>
+    <div class="k">Notes</div><p>${esc(p.notes)}</p>
+    ${warn.length?`<div class="warn">${warn.map(esc).join('<br>')}</div>`:''}
+    <div class="links"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ll}">Directions</a>
+    <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${ll}">Open in Maps</a></div></div>`;
+}
+P.forEach((p,i)=>{
+  const m = L.marker([p.lat,p.lon],{icon:icon(p),title:p.n,riseOnHover:true});
+  m.bindPopup(()=>popup(p),{maxWidth:320,autoPanPadding:[20,70]});
+  markers.set(i,m);
+});
+
+/* ---------- filtering ---------- */
+function pass(p){
+  if (S.q){ const t=S.q.toLowerCase().split(/\s+/).filter(Boolean); if(!t.every(w=>p.hay.includes(w))) return false; }
+  if (S.who.size && !S.who.has(p.who)) return false;
+  if (S.books.size){
+    const sel=[...S.books];
+    if (S.allBooks ? !sel.every(b=>p.books.includes(b)) : !sel.some(b=>p.books.includes(b))) return false;
+  }
+  if (S.types.size && !S.types.has(p.type)) return false;
+  if (S.town){
+    if (S.town==='__outside') { if (p.town==='London') return false; }
+    else if (p.town!==S.town) return false;
+  }
+  if (S.areas.size && !S.areas.has(p.area)) return false;
+  if (S.acc.size && !S.acc.has(p.acc)) return false;
+  if (p.bc<S.minBooks) return false;
+  if (S.noFic && p.fic) return false;
+  return true;
+}
+let visible=[];
+function fitTo(b,maxZoom){
+  const desk=window.innerWidth>=760, left=desk&&$('filterPanel').classList.contains('open')?380:50, bottom=(!desk&&document.body.classList.contains('sheet'))?window.innerHeight*0.55:50;
+  map.flyToBounds(b,{paddingTopLeft:[left,70],paddingBottomRight:[50,bottom],maxZoom:maxZoom,duration:.6});
+}
+function apply(fit){
+  visible = P.map((p,i)=>[p,i]).filter(([p])=>pass(p));
+  cluster.clearLayers();
+  cluster.addLayers(visible.map(([,i])=>markers.get(i)));
+  $('count').textContent = `${visible.length} of ${P.length} places`;
+  const n = (defaults()===DEF)?0:activeCount();
+  $('fdot').textContent=n; $('btnFilters').classList.toggle('has',n>0);
+  renderList(); refreshChipCounts();
+  if (fit && visible.length){
+    const b=L.latLngBounds(visible.map(([p])=>[p.lat,p.lon]));
+    fitTo(b,visible.length===1?16:15);
+  }
+}
+function activeCount(){
+  return (S.q?1:0)+(S.who.size?1:0)+(S.books.size?1:0)+(S.types.size?1:0)+(S.town?1:0)+(S.areas.size?1:0)+(S.acc.size?1:0)+(S.minBooks>1?1:0)+(S.noFic?1:0);
+}
+
+/* ---------- filter UI ---------- */
+function chip(label,on,fn,extra=''){
+  const b=document.createElement('button'); b.className='chip'+(on?' on':''); b.innerHTML=label+extra; b.onclick=fn; b.type='button'; return b;
+}
+const toggle=(set,v)=>{set.has(v)?set.delete(v):set.add(v)};
+const chipRefs=[];
+function group(title,node,extra){
+  const g=document.createElement('div'); g.className='group';
+  g.innerHTML=`<h3>${title}</h3>`; g.appendChild(node); if(extra) g.appendChild(extra); return g;
+}
+function buildFilters(){
+  const body=$('filterBody'); body.innerHTML=''; chipRefs.length=0;
+  // who
+  let w=document.createElement('div'); w.className='chips';
+  [['Strike','--strike'],['Robin','--robin'],['Both','--both']].forEach(([k,c])=>{
+    const el=chip(`<span class="sw" style="background:var(${c})"></span>${k==='Both'?'Both together':k+' only'}`,S.who.has(k),()=>{toggle(S.who,k);buildFilters();apply(true)});
+    w.appendChild(el);
+  });
+  body.appendChild(group('Who visited',w));
+  // books
+  const bc=count(P.flatMap(p=>p.books),x=>x);
+  let b=document.createElement('div'); b.className='chips';
+  BOOKS.forEach(([k,name])=>{ b.appendChild(chip(esc(name),S.books.has(k),()=>{toggle(S.books,k);buildFilters();apply(true)},` <span class="n">${bc[k]||0}</span>`)); });
+  const sw=document.createElement('div'); sw.className='row';
+  sw.innerHTML=`<label for="allb">Must appear in <b>all</b> selected books</label><input type="checkbox" id="allb" ${S.allBooks?'checked':''}>`;
+  sw.querySelector('input').onchange=e=>{S.allBooks=e.target.checked;apply(true)};
+  const mb=document.createElement('div'); mb.className='row';
+  mb.innerHTML=`<label for="minb">Appears in at least</label><select id="minb" style="width:120px">${[1,2,3,4,5].map(n=>`<option value="${n}" ${S.minBooks===n?'selected':''}>${n} book${n>1?'s':''}</option>`).join('')}</select>`;
+  mb.querySelector('select').onchange=e=>{S.minBooks=+e.target.value;apply(true)};
+  const bw=document.createElement('div'); bw.append(b,sw,mb);
+  body.appendChild(group('Book',bw));
+  // type
+  const tc=count(P,p=>p.type);
+  let t=document.createElement('div'); t.className='chips';
+  Object.keys(TYPE_ICON).forEach(k=>{ if(!tc[k]) return; t.appendChild(chip(`${TYPE_ICON[k]} ${esc(k)}`,S.types.has(k),()=>{toggle(S.types,k);buildFilters();apply(true)},` <span class="n">${tc[k]}</span>`)); });
+  body.appendChild(group('Type of place',t));
+  // town
+  const towns=count(P,p=>p.town);
+  const sel=document.createElement('select');
+  const outside=P.filter(p=>p.town!=='London').length;
+  let opts=`<option value="">Everywhere</option><option value="London" ${S.town==='London'?'selected':''}>London (${towns['London']})</option><option value="__outside" ${S.town==='__outside'?'selected':''}>Outside London (${outside})</option><optgroup label="Specific town">`;
+  Object.keys(towns).filter(k=>k!=='London').sort((a,b)=>a.localeCompare(b)).forEach(k=>{opts+=`<option value="${esc(k)}" ${S.town===k?'selected':''}>${esc(k)} (${towns[k]})</option>`});
+  sel.innerHTML=opts+'</optgroup>';
+  sel.onchange=e=>{S.town=e.target.value; if(S.town && S.town!=='London') S.areas.clear(); buildFilters();apply(true)};
+  body.appendChild(group('Town',sel));
+  // area
+  if (!S.town || S.town==='London'){
+    const ac=count(P.filter(p=>p.area),p=>p.area);
+    let a=document.createElement('div'); a.className='chips';
+    Object.keys(ac).sort((x,y)=>(x==='Outer London')-(y==='Outer London')||ac[y]-ac[x]).forEach(k=>a.appendChild(chip(esc(k),S.areas.has(k),()=>{toggle(S.areas,k);buildFilters();apply(true)},` <span class="n">${ac[k]}</span>`)));
+    body.appendChild(group('London area',a));
+  }
+  // accuracy
+  let c=document.createElement('div'); c.className='chips';
+  [['exact','🔹 Exact building'],['street','▫️ Street / corner'],['approx','◌ Approximate area']].forEach(([k,l])=>c.appendChild(chip(l,S.acc.has(k),()=>{toggle(S.acc,k);buildFilters();apply(true)})));
+  const tn=document.createElement('p'); tn.className='tiny'; tn.textContent='Pins for streets are squares; approximate places have a dashed outline.';
+  body.appendChild(group('Pin accuracy',c,tn));
+  // fictional
+  const f=document.createElement('div'); f.className='row';
+  f.innerHTML=`<label for="nofic">Hide places where the venue is fictional (only the real street is shown)</label><input type="checkbox" id="nofic" ${S.noFic?'checked':''}>`;
+  f.querySelector('input').onchange=e=>{S.noFic=e.target.checked;apply(true)};
+  body.appendChild(group('Real or invented',f));
+  const at=document.createElement('p'); at.className='attrib-note'; at.textContent='Unofficial fan project, not affiliated with the author or publishers. Locations extracted from the eight Strike novels. Map data © OpenStreetMap contributors.';
+  body.appendChild(at);
+}
+function refreshChipCounts(){ /* counts shown are static totals; keep simple */ }
+
+/* ---------- list ---------- */
+let me=null, sortMode='az';
+function dist(p){ return me? map.distance(me,[p.lat,p.lon]) : null; }
+function fmtD(m){ return m<1000? Math.round(m/10)*10+' m' : (m/1000).toFixed(m<10000?1:0)+' km'; }
+function renderList(){
+  const arr=visible.slice();
+  if (sortMode==='near' && me) arr.sort((a,b)=>dist(a[0])-dist(b[0])); else arr.sort((a,b)=>a[0].n.localeCompare(b[0].n));
+  $('listTitle').textContent=`Places (${arr.length})`;
+  $('sortBtn').textContent = sortMode==='near'?'Sort: nearest':'Sort: A–Z';
+  const box=$('listBody'); box.innerHTML='';
+  const max=Math.min(arr.length,300);
+  const frag=document.createDocumentFragment();
+  for(let k=0;k<max;k++){
+    const [p,i]=arr[k];
+    const d=document.createElement('div'); d.className='item';
+    d.innerHTML=`<div class="ic ${p.who}">${TYPE_ICON[p.type]||'📍'}</div><div><div class="t">${esc(p.n)}</div><div class="s">${esc(p.area||p.town)} · ${p.books.join(', ')}</div></div>${me?`<div class="d">${fmtD(dist(p))}</div>`:''}`;
+    d.onclick=()=>{ if(window.innerWidth<760) closePanels(); focusMarker(i); };
+    frag.appendChild(d);
+  }
+  box.appendChild(frag);
+  if(!arr.length) box.innerHTML='<p class="tiny" style="padding:16px 0">No places match these filters.</p>';
+}
+function focusMarker(i){
+  const m=markers.get(i), p=P[i];
+  cluster.zoomToShowLayer(m,()=>{ map.setView([p.lat,p.lon],Math.max(map.getZoom(),16)); m.openPopup(); });
+}
+
+/* ---------- panels ---------- */
+function closePanels(){ document.querySelectorAll('.panel').forEach(x=>x.classList.remove('open')); document.body.classList.remove('sheet','fp'); }
+function openPanel(id){
+  const el=$(id), was=el.classList.contains('open'); closePanels();
+  if(!was){ el.classList.add('open'); document.body.classList.add('sheet'); document.body.classList.toggle('fp',id==='filterPanel'); }
+}
+$('btnFilters').onclick=()=>openPanel('filterPanel');
+$('btnList').onclick=()=>openPanel('listPanel');
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closePanels);
+map.on('click',()=>{ if(window.innerWidth<760) closePanels(); });
+$('reset').onclick=()=>{ Object.assign(S,{q:'',who:new Set(),books:new Set(),allBooks:false,types:new Set(),town:'',areas:new Set(),acc:new Set(),minBooks:1,noFic:false}); $('search').value=''; buildFilters(); apply(false); };
+let st; $('search').oninput=e=>{ clearTimeout(st); st=setTimeout(()=>{S.q=e.target.value.trim();apply(true)},200); };
+$('btnFit').onclick=()=>{ if(visible.length) fitTo(L.latLngBounds(visible.map(([p])=>[p.lat,p.lon])),15); };
+$('sortBtn').onclick=()=>{ if(sortMode==='az'){ if(!me){ locate(true); } else { sortMode='near'; renderList(); } } else { sortMode='az'; renderList(); } };
+
+/* ---------- geolocation ---------- */
+let meMarker=null;
+function locate(thenSort){
+  if(!navigator.geolocation){ alert('Location is not available in this browser.'); return; }
+  const ok=pos=>{
+    me=[pos.coords.latitude,pos.coords.longitude];
+    if(meMarker) meMarker.setLatLng(me); else meMarker=L.marker(me,{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[16,16],iconAnchor:[8,8]}),interactive:false,zIndexOffset:-100}).addTo(map);
+    if(thenSort) sortMode='near'; else map.flyTo(me,15,{duration:.6});
+    renderList();
+  };
+  const fail=err=>{
+    const why={1:'Permission was denied. Allow location access for this site in your browser (and, on a Mac, in System Settings > Privacy & Security > Location Services).',
+      2:'Your device could not work out its position (common on desktops without GPS or Wi-Fi location). It should work on a phone.',
+      3:'Locating timed out. Try again.'}[err&&err.code]||'Unknown error.';
+    alert('Could not get your location.\n\n'+why);
+  };
+  // first try a quick, low-accuracy fix (works on desktops); then refine with high accuracy
+  navigator.geolocation.getCurrentPosition(pos=>{
+    ok(pos);
+    navigator.geolocation.getCurrentPosition(ok,()=>{},{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  },err=>{
+    navigator.geolocation.getCurrentPosition(ok,fail,{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  },{enableHighAccuracy:false,timeout:10000,maximumAge:60000});
+}
+$('btnLoc').onclick=()=>locate(false);
+
+/* ---------- init ---------- */
+buildFilters(); apply(false);
+if (matchMedia('(min-width:760px)').matches) openPanel('filterPanel');
+})();
+</script>
+</body>
+</html>
