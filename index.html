@@ -195,11 +195,17 @@ const saved=loadState();
 /* ---------- map ---------- */
 const map = L.map('map',{zoomControl:false,tap:true}).setView(saved&&saved.view?saved.view.c:[51.512,-0.128],saved&&saved.view?saved.view.z:12);
 map.on('moveend',()=>{ const c=map.getCenter(); saveState({view:{c:[c.lat,c.lng],z:map.getZoom()}}); });
-document.addEventListener('click',e=>{
-  const b=e.target.closest&&e.target.closest('[data-more]'); if(!b) return;
-  const p=b.parentElement, full=p.querySelector('.full'), short=p.querySelector('.short'), open=full.hidden;
-  full.hidden=!open; short.hidden=open; b.textContent=open?'Show less':'Show more';
-  const pop=b.closest('.leaflet-popup'); if(pop) map.eachLayer(l=>{ if(l.isPopupOpen&&l.isPopupOpen()) l.getPopup().update(); });
+map.on('popupopen',e=>{
+  // Leaflet stops click events at the popup edge, so bind the buttons directly
+  const pop=e.popup, el=pop.getElement(); if(!el) return;
+  el.querySelectorAll('[data-more]').forEach(b=>b.addEventListener('click',ev=>{
+    ev.preventDefault();
+    const p=b.parentElement, full=p.querySelector('.full'), short=p.querySelector('.short'), open=full.hidden;
+    full.hidden=!open; short.hidden=open; b.textContent=open?'Show less':'Show more';
+    // resize in place (pop.update() would rebuild the content, resetting the toggle and detaching the clicked button, which makes Leaflet treat the click as a map click and close the popup)
+    const sc=el.querySelector('.pop-scroll'), top=sc?sc.scrollTop:0;
+    pop._updateLayout(); pop._updatePosition(); if(sc) sc.scrollTop=top;
+  }));
 });
 L.control.zoom({position:'topright'}).addTo(map);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
