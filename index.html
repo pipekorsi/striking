@@ -112,6 +112,8 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 .badge.Strike{background:var(--strike);color:#fff}.badge.Robin{background:var(--robin);color:#fff}.badge.Both{background:var(--both);color:#fff}
 .pop .k{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:8px}
 .pop p{margin:2px 0 0}
+.pop-scroll{max-height:min(42vh,320px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:4px}
+.more{border:0;background:none;color:var(--accent);font:600 13px inherit;font-family:inherit;padding:2px 0;cursor:pointer}
 .pop .links{display:flex;gap:12px;margin-top:10px}
 .pop a{color:var(--accent);font-weight:600;text-decoration:none}
 .pop .warn{font-size:12.5px;color:var(--muted);margin-top:8px}
@@ -173,13 +175,36 @@ const count = (arr,fn)=>arr.reduce((m,x)=>{const k=fn(x);m[k]=(m[k]||0)+1;return
 const S = {q:'',who:new Set(),books:new Set(),allBooks:false,types:new Set(),town:'',areas:new Set(),acc:new Set(),minBooks:1,noFic:false};
 const defaults = () => JSON.stringify([S.q,[...S.who],[...S.books],S.allBooks,[...S.types],S.town,[...S.areas],[...S.acc],S.minBooks,S.noFic]);
 const DEF = defaults();
+const KEY='striking-state-v1';
+function loadState(){
+  try{
+    const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(!o) return null;
+    S.q=o.q||''; S.who=new Set(o.who||[]); S.books=new Set(o.books||[]); S.allBooks=!!o.allBooks; S.types=new Set(o.types||[]);
+    S.town=o.town||''; S.areas=new Set(o.areas||[]); S.acc=new Set(o.acc||[]); S.minBooks=+o.minBooks||1; S.noFic=!!o.noFic;
+    return o;
+  }catch(e){ return null; }
+}
+function saveState(extra){
+  try{
+    const o=Object.assign(JSON.parse(localStorage.getItem(KEY)||'{}'),{q:S.q,who:[...S.who],books:[...S.books],allBooks:S.allBooks,types:[...S.types],town:S.town,areas:[...S.areas],acc:[...S.acc],minBooks:S.minBooks,noFic:S.noFic},extra||{});
+    localStorage.setItem(KEY,JSON.stringify(o));
+  }catch(e){}
+}
+const saved=loadState();
 
 /* ---------- map ---------- */
-const map = L.map('map',{zoomControl:false,tap:true}).setView([51.512,-0.128],12);
+const map = L.map('map',{zoomControl:false,tap:true}).setView(saved&&saved.view?saved.view.c:[51.512,-0.128],saved&&saved.view?saved.view.z:12);
+map.on('moveend',()=>{ const c=map.getCenter(); saveState({view:{c:[c.lat,c.lng],z:map.getZoom()}}); });
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-more]'); if(!b) return;
+  const p=b.parentElement, full=p.querySelector('.full'), short=p.querySelector('.short'), open=full.hidden;
+  full.hidden=!open; short.hidden=open; b.textContent=open?'Show less':'Show more';
+  const pop=b.closest('.leaflet-popup'); if(pop) map.eachLayer(l=>{ if(l.isPopupOpen&&l.isPopupOpen()) l.getPopup().update(); });
+});
 L.control.zoom({position:'topright'}).addTo(map);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
   attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
-const cluster = L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:42,spiderfyOnMaxZoom:true,disableClusteringAtZoom:18});
+const cluster = L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:42,spiderfyOnMaxZoom:true,disableClusteringAtZoom:18,removeOutsideVisibleBounds:false});
 map.addLayer(cluster);
 const markers = new Map();
 
@@ -189,6 +214,11 @@ function icon(p){
 }
 const PRECTXT = {building:'Exact building',landmark:'Exact landmark',street:'Street / corner (no single building)',square:'Square',
   area:'Approximate area',district:'Approximate district',town:'Town / village centre',village:'Village centre',city:'City centre',county:'County (rough)',country:'Country (rough)'};
+function clip(t,n){
+  if(t.length<=n+30) return `<p>${esc(t)}</p>`;
+  let cut=t.lastIndexOf(' ',n); if(cut<n*0.6) cut=n;
+  return `<p><span class="short">${esc(t.slice(0,cut))}…</span><span class="full" hidden>${esc(t)}</span> <button type="button" class="more" data-more>Show more</button></p>`;
+}
 function popup(p){
   const bks = p.books.map(b=>`<span class="badge">${esc(BOOKNAME[b]||b)}</span>`).join('');
   const ll = p.lat+','+p.lon;
@@ -196,18 +226,18 @@ function popup(p){
   if (p.acc==='street') warn.push('Pin marks the street or corner, not a single building.');
   else if (p.acc==='approx') warn.push('Pin is approximate: '+(PRECTXT[p.prec]||p.prec).toLowerCase()+'.');
   if (p.fic) warn.push('The venue itself is fictional (or partly) in the books; the location shown is the real street or area.');
-  return `<div class="pop"><h4>${esc(p.n)}</h4>
+  return `<div class="pop"><h4>${esc(p.n)}</h4><div class="pop-scroll">
     <div class="badges"><span class="badge ${p.who}">${p.who==='Both'?'Strike & Robin':p.who}</span><span class="badge">${TYPE_ICON[p.type]||''} ${esc(p.type)}</span>${p.area?`<span class="badge">${esc(p.area)}</span>`:`<span class="badge">${esc(p.town)}</span>`}</div>
     <div class="k">Books</div><div class="badges" style="margin:3px 0 0">${bks}</div>
-    <div class="k">Chapters</div><p>${esc(p.ch)}</p>
-    <div class="k">Notes</div><p>${esc(p.notes)}</p>
+    <div class="k">Chapters</div>${clip(p.ch,110)}
+    <div class="k">Notes</div>${clip(p.notes,240)}
     ${warn.length?`<div class="warn">${warn.map(esc).join('<br>')}</div>`:''}
-    <div class="links"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ll}">Directions</a>
+    </div><div class="links"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ll}">Directions</a>
     <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${ll}">Open in Maps</a></div></div>`;
 }
 P.forEach((p,i)=>{
   const m = L.marker([p.lat,p.lon],{icon:icon(p),title:p.n,riseOnHover:true});
-  m.bindPopup(()=>popup(p),{maxWidth:320,autoPanPadding:[20,70]});
+  m.bindPopup(()=>popup(p),{maxWidth:320,autoPanPaddingTopLeft:[20,70],autoPanPaddingBottomRight:[20,20]});
   markers.set(i,m);
 });
 
@@ -242,7 +272,7 @@ function apply(fit){
   $('count').textContent = `${visible.length} of ${P.length} places`;
   const n = (defaults()===DEF)?0:activeCount();
   $('fdot').textContent=n; $('btnFilters').classList.toggle('has',n>0);
-  renderList(); refreshChipCounts();
+  renderList(); refreshChipCounts(); saveState();
   if (fit && visible.length){
     const b=L.latLngBounds(visible.map(([p])=>[p.lat,p.lon]));
     fitTo(b,visible.length===1?16:15);
@@ -398,7 +428,7 @@ window.addEventListener('appinstalled',()=>{ deferredInstall=null; const b=$('in
 if ('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 /* ---------- init ---------- */
-buildFilters(); apply(false);
+$('search').value=S.q; buildFilters(); apply(false);
 if (matchMedia('(min-width:760px)').matches) openPanel('filterPanel');
 })();
 </script>
