@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Strike Map</title>
 <meta name="description" content="Every real place Cormoran Strike and Robin Ellacott visit in the Strike novels, on an interactive map.">
-<meta name="theme-color" content="#1f2937">
+<meta name="theme-color" content="#8b1e3f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Striking">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.min.css">
@@ -309,6 +315,10 @@ function buildFilters(){
   f.querySelector('input').onchange=e=>{S.noFic=e.target.checked;apply(true)};
   body.appendChild(group('Real or invented',f));
   const at=document.createElement('p'); at.className='attrib-note'; at.textContent='Unofficial fan project, not affiliated with the author or publishers. Locations extracted from the eight Strike novels. Map data © OpenStreetMap contributors.';
+  const ib=document.createElement('button'); ib.id='installBtn'; ib.className='chip'; ib.type='button'; ib.textContent='📲 Install as an app';
+  ib.style.cssText='margin-top:14px;display:'+(deferredInstall?'inline-flex':'none');
+  ib.onclick=async()=>{ if(!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall=null; ib.style.display='none'; };
+  body.appendChild(ib);
   body.appendChild(at);
 }
 function refreshChipCounts(){ /* counts shown are static totals; keep simple */ }
@@ -380,6 +390,12 @@ function locate(thenSort){
   },{enableHighAccuracy:false,timeout:10000,maximumAge:60000});
 }
 $('btnLoc').onclick=()=>locate(false);
+
+/* ---------- install as an app (PWA) ---------- */
+let deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredInstall=e; const b=$('installBtn'); if(b) b.style.display='inline-flex'; });
+window.addEventListener('appinstalled',()=>{ deferredInstall=null; const b=$('installBtn'); if(b) b.style.display='none'; });
+if ('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 /* ---------- init ---------- */
 buildFilters(); apply(false);
