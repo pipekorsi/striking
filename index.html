@@ -67,6 +67,7 @@ body{font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;backgrou
   .panel{left:0;right:0;bottom:0;height:78vh;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom)}
   #count{bottom:calc(10px + env(safe-area-inset-bottom))}
   body.sheet #fab,body.sheet #count{display:none}
+  .panel.compact{height:auto;max-height:70vh}
 }
 
 /* filters */
@@ -91,6 +92,15 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 .item .t{font-weight:600;font-size:14.5px;line-height:1.25}
 .item .s{font-size:12.5px;color:var(--muted);margin-top:2px}
 .item .d{margin-left:auto;font-size:12.5px;color:var(--muted);white-space:nowrap;padding-left:6px}
+
+/* tube panel */
+@media (min-width:760px){ .panel.compact{bottom:auto;max-height:calc(100% - 80px)} }
+.tl{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.tl .bar{width:26px;height:7px;border-radius:4px;flex:none;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.tl span.name{flex:1;font-size:14.5px}
+.tl.master{font-weight:700;padding-top:4px}
+#btnTube.on{background:var(--accent);color:#fff}
+.stn{border:0;border-radius:10px;padding:2px 9px;font-size:12px;font-weight:600}
 
 /* pins */
 .pin{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);color:#fff;line-height:1}
@@ -134,6 +144,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 
   <div id="count">…</div>
   <div id="fab">
+    <button class="btn" id="btnTube" title="Tube lines" aria-label="Tube lines">🚇</button>
     <button class="btn" id="btnFit" title="Zoom to results" aria-label="Zoom to results">⤢</button>
     <button class="btn" id="btnLoc" title="Show my location" aria-label="Show my location">◎</button>
   </div>
@@ -141,6 +152,11 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
   <section class="panel" id="filterPanel" aria-label="Filters">
     <header><h2>Filters</h2><div><button class="link" id="reset">Reset</button> <button class="x" data-close aria-label="Close">×</button></div></header>
     <div class="body" id="filterBody"></div>
+  </section>
+
+  <section class="panel compact" id="tubePanel" aria-label="Tube lines">
+    <header><h2>Tube &amp; rail lines</h2><div><button class="x" data-close aria-label="Close">×</button></div></header>
+    <div class="body" id="tubeBody"></div>
   </section>
 
   <section class="panel" id="listPanel" aria-label="Places list">
@@ -152,6 +168,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
 <script src="data.js"></script>
+<script src="tube.js"></script>
 <script>
 (function(){
 const P = window.PLACES || [];
@@ -445,6 +462,48 @@ function locate(thenSort){
   },{enableHighAccuracy:false,timeout:10000,maximumAge:60000});
 }
 $('btnLoc').onclick=()=>locate(false);
+
+/* ---------- tube & rail lines ---------- */
+const TUBE=window.TUBE||{lines:[],stations:[]};
+map.createPane('tubeCase').style.zIndex=340; map.createPane('tube').style.zIndex=350; map.createPane('tubeSt').style.zIndex=360;
+const tubeGroups={}, tubeStations=L.layerGroup().addTo(map);
+const lineByKey=Object.fromEntries(TUBE.lines.map(l=>[l.k,l]));
+TUBE.lines.forEach(l=>{
+  const g=L.layerGroup();
+  // one multi-segment path per line (thousands of separate paths would be slow on a phone)
+  L.polyline(l.w,{pane:'tubeCase',color:'#ffffff',weight:6.5,opacity:.85,interactive:false,lineCap:'round'}).addTo(g);
+  L.polyline(l.w,{pane:'tube',color:l.c,weight:3.5,opacity:.95,interactive:false,lineCap:'round'}).addTo(g);
+  tubeGroups[l.k]=g;
+});
+const stationMarkers=TUBE.stations.map(st=>{
+  const chips=st.l.map(k=>{const l=lineByKey[k]; const dark=['#FFD300','#F3A9BB','#95CDBA','#A0A5A9'].includes(l.c); return `<span class="stn" style="background:${l.c};color:${dark?'#111':'#fff'}">${esc(l.n)}</span>`;}).join(' ');
+  const m=L.circleMarker([st.lat,st.lon],{pane:'tubeSt',radius:5,color:'#1f2937',weight:2,fillColor:'#fff',fillOpacity:1});
+  m.bindPopup(`<div class="pop"><h4>${esc(st.n)}</h4><div class="badges">${chips}</div></div>`,{maxWidth:280});
+  return {st,m};
+});
+const tubeSel=new Set((saved&&saved.tube)||[]);
+function refreshTube(){
+  TUBE.lines.forEach(l=>{ const on=tubeSel.has(l.k), g=tubeGroups[l.k]; if(on&&!map.hasLayer(g)) g.addTo(map); if(!on&&map.hasLayer(g)) map.removeLayer(g); });
+  tubeStations.clearLayers();
+  if(map.getZoom()>=12) stationMarkers.forEach(({st,m})=>{ if(st.l.some(k=>tubeSel.has(k))) tubeStations.addLayer(m); });
+  $('btnTube').classList.toggle('on',tubeSel.size>0);
+  saveState({tube:[...tubeSel]});
+}
+function buildTubePanel(){
+  const body=$('tubeBody'); body.innerHTML='';
+  const all=tubeSel.size===TUBE.lines.length;
+  const mk=(bar,label,checked,indet,fn,cls='')=>{
+    const row=document.createElement('label'); row.className='tl '+cls;
+    row.innerHTML=`${bar}<span class="name">${label}</span><input type="checkbox" ${checked?'checked':''}>`;
+    const cb=row.querySelector('input'); cb.indeterminate=indet; cb.onchange=()=>fn(cb.checked); return row;
+  };
+  body.appendChild(mk('','Show all lines',all,tubeSel.size>0&&!all,on=>{ tubeSel.clear(); if(on) TUBE.lines.forEach(l=>tubeSel.add(l.k)); buildTubePanel(); refreshTube(); },'master'));
+  TUBE.lines.forEach(l=>body.appendChild(mk(`<span class="bar" style="background:${l.c}"></span>`,esc(l.n),tubeSel.has(l.k),false,on=>{ on?tubeSel.add(l.k):tubeSel.delete(l.k); buildTubePanel(); refreshTube(); })));
+  const n=document.createElement('p'); n.className='tiny'; n.textContent='Tap a station dot (zoomed in) to see its name and lines. Line data © OpenStreetMap contributors.'; body.appendChild(n);
+}
+map.on('zoomend',refreshTube);
+$('btnTube').onclick=()=>openPanel('tubePanel');
+buildTubePanel(); refreshTube();
 
 /* ---------- install as an app (PWA) ---------- */
 let deferredInstall=null;

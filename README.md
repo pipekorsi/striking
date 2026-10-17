@@ -10,6 +10,8 @@ An interactive map of the real places Cormoran Strike and Robin Ellacott visit i
 - Each pin shows who visited (Strike, Robin or both), the books and chapters, and a short note.
 - Filter by who visited, book, type of place, town, London area, how exact the pin is, and more. A "where am I" button and a nearest-first list make it handy for sightseeing.
 
+- An optional **Tube layer** (🚇 button, off by default): the Underground, Elizabeth line and DLR, each switchable on its own, with tappable station dots.
+
 Some pins are approximate (street, area or town level) and are drawn differently.
 
 ## How it's built

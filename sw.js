@@ -1,9 +1,9 @@
 // Service worker: lets the app install and work offline (except map tiles you haven't viewed before).
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `striking-shell-${VERSION}`;
 const TILES = 'striking-tiles';
 const LIBS = 'striking-libs';
-const PRECACHE = ['./', 'index.html', 'data.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const PRECACHE = ['./', 'index.html', 'data.js', 'tube.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 const LIB_URLS = [
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
