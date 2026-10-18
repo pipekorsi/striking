@@ -466,26 +466,72 @@ $('btnLoc').onclick=()=>locate(false);
 /* ---------- tube & rail lines ---------- */
 const TUBE=window.TUBE||{lines:[],stations:[]};
 map.createPane('tubeCase').style.zIndex=340; map.createPane('tube').style.zIndex=350; map.createPane('tubeSt').style.zIndex=360;
-const tubeGroups={}, tubeStations=L.layerGroup().addTo(map);
 const lineByKey=Object.fromEntries(TUBE.lines.map(l=>[l.k,l]));
+const tubeLayer=L.layerGroup().addTo(map), stLayer=L.layerGroup().addTo(map);
+const gfx={};   // line key -> {casing, line, px (offset chains in pixels at current zoom)}
 TUBE.lines.forEach(l=>{
-  const g=L.layerGroup();
-  // one multi-segment path per line (thousands of separate paths would be slow on a phone)
-  L.polyline(l.w,{pane:'tubeCase',color:'#ffffff',weight:6.5,opacity:.85,interactive:false,lineCap:'round'}).addTo(g);
-  L.polyline(l.w,{pane:'tube',color:l.c,weight:3.5,opacity:.95,interactive:false,lineCap:'round'}).addTo(g);
-  tubeGroups[l.k]=g;
-});
-const stationMarkers=TUBE.stations.map(st=>{
-  const chips=st.l.map(k=>{const l=lineByKey[k]; const dark=['#FFD300','#F3A9BB','#95CDBA','#A0A5A9'].includes(l.c); return `<span class="stn" style="background:${l.c};color:${dark?'#111':'#fff'}">${esc(l.n)}</span>`;}).join(' ');
-  const m=L.circleMarker([st.lat,st.lon],{pane:'tubeSt',radius:5,color:'#1f2937',weight:2,fillColor:'#fff',fillOpacity:1});
-  m.bindPopup(`<div class="pop"><h4>${esc(st.n)}</h4><div class="badges">${chips}</div></div>`,{maxWidth:280});
-  return {st,m};
+  gfx[l.k]={
+    casing:L.polyline([],{pane:'tubeCase',color:'#ffffff',weight:6.5,opacity:.85,interactive:false,lineCap:'round',lineJoin:'round'}),
+    line:L.polyline([],{pane:'tube',color:l.c,weight:3.5,opacity:.97,interactive:false,lineCap:'round',lineJoin:'round'}),
+    px:null};
 });
 const tubeSel=new Set((saved&&saved.tube)||[]);
+const DARK_CHIP=['#FFD300','#F3A9BB','#95CDBA','#A0A5A9'];
+function stationPopup(st){
+  const chips=st.l.map(([k])=>{const l=lineByKey[k]; return `<span class="stn" style="background:${l.c};color:${DARK_CHIP.includes(l.c)?'#111':'#fff'}">${esc(l.n)}</span>`;}).join(' ');
+  return `<div class="pop"><h4>${esc(st.n)}</h4><div class="badges">${chips}</div></div>`;
+}
+/* Where lines share a track each vertex carries a "lane" number; here the lanes are turned into a sideways offset in screen pixels. */
+function offsetChain(chain,z,spacing){
+  const P=chain.map(v=>map.project([v[0],v[1]],z)), n=P.length, out=new Array(n);
+  for(let i=0;i<n;i++){
+    const a=P[Math.max(i-1,0)], b=P[Math.min(i+1,n-1)];
+    let dx=b.x-a.x, dy=b.y-a.y; const len=Math.hypot(dx,dy)||1, off=chain[i][2]*spacing;
+    out[i]=L.point(P[i].x-dy/len*off, P[i].y+dx/len*off);
+  }
+  return out;
+}
+function nearestOnChain(px,vi,H){
+  let best=null,bd=1e18; const lo=Math.max(0,vi-8), hi=Math.min(px.length-2,vi+8);
+  for(let i=lo;i<=hi;i++){
+    const a=px[i], b=px[i+1], dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy;
+    const t=L2?Math.max(0,Math.min(1,((H.x-a.x)*dx+(H.y-a.y)*dy)/L2)):0;
+    const q=L.point(a.x+dx*t,a.y+dy*t), dd=(q.x-H.x)**2+(q.y-H.y)**2;
+    if(dd<bd){bd=dd;best=q;}
+  }
+  return best||px[Math.min(vi,px.length-1)];
+}
+function hit(m,st){ m.bindPopup(()=>stationPopup(st),{maxWidth:280}); return m; }
+function dot(ll,color,st){
+  // visible dot slightly wider than the line, plus a larger invisible ring so it is easy to tap
+  hit(L.circleMarker(ll,{pane:'tubeSt',radius:4.8,stroke:true,weight:10,color:color,opacity:0.01,fillColor:color,fillOpacity:1}),st).addTo(stLayer);
+}
 function refreshTube(){
-  TUBE.lines.forEach(l=>{ const on=tubeSel.has(l.k), g=tubeGroups[l.k]; if(on&&!map.hasLayer(g)) g.addTo(map); if(!on&&map.hasLayer(g)) map.removeLayer(g); });
-  tubeStations.clearLayers();
-  if(map.getZoom()>=12) stationMarkers.forEach(({st,m})=>{ if(st.l.some(k=>tubeSel.has(k))) tubeStations.addLayer(m); });
+  const z=map.getZoom(), spacing=z>=13?4.6:3.8;
+  TUBE.lines.forEach(l=>{
+    const g=gfx[l.k];
+    if(!tubeSel.has(l.k)){ if(tubeLayer.hasLayer(g.line)){ tubeLayer.removeLayer(g.casing); tubeLayer.removeLayer(g.line); } g.px=null; return; }
+    g.px=l.w.map(ch=>offsetChain(ch,z,spacing));
+    const ll=g.px.map(ch=>ch.map(p=>map.unproject(p,z)));
+    g.casing.setLatLngs(ll); g.line.setLatLngs(ll);
+    if(!tubeLayer.hasLayer(g.line)){ tubeLayer.addLayer(g.casing); tubeLayer.addLayer(g.line); }
+  });
+  stLayer.clearLayers();
+  if(z>=12) TUBE.stations.forEach(st=>{
+    const vis=st.l.filter(([k])=>tubeSel.has(k)); if(!vis.length) return;
+    const H=map.project([st.lat,st.lon],z);
+    const J=vis.map(([k,ci,vi])=>({k,p:nearestOnChain(gfx[k].px[ci],vi,H)}));
+    if(J.length>=2){
+      // interchange: white hub at the station's real position, joined to each line's route by the shortest (perpendicular) link
+      J.forEach(({k,p})=>{
+        const ll=map.unproject(p,z), c=lineByKey[k].c;
+        L.polyline([[st.lat,st.lon],ll],{pane:'tubeCase',color:'#ffffff',weight:6.5,opacity:.9,interactive:false,lineCap:'round'}).addTo(stLayer);
+        L.polyline([[st.lat,st.lon],ll],{pane:'tube',color:c,weight:3.5,opacity:.97,interactive:false,lineCap:'round'}).addTo(stLayer);
+      });
+      J.forEach(({k,p})=>dot(map.unproject(p,z),lineByKey[k].c,st));
+      hit(L.circleMarker([st.lat,st.lon],{pane:'tubeSt',radius:8,color:'#111827',weight:2.5,fillColor:'#ffffff',fillOpacity:1}),st).addTo(stLayer);
+    } else dot(map.unproject(J[0].p,z),lineByKey[J[0].k].c,st);
+  });
   $('btnTube').classList.toggle('on',tubeSel.size>0);
   saveState({tube:[...tubeSel]});
 }
@@ -499,7 +545,7 @@ function buildTubePanel(){
   };
   body.appendChild(mk('','Show all lines',all,tubeSel.size>0&&!all,on=>{ tubeSel.clear(); if(on) TUBE.lines.forEach(l=>tubeSel.add(l.k)); buildTubePanel(); refreshTube(); },'master'));
   TUBE.lines.forEach(l=>body.appendChild(mk(`<span class="bar" style="background:${l.c}"></span>`,esc(l.n),tubeSel.has(l.k),false,on=>{ on?tubeSel.add(l.k):tubeSel.delete(l.k); buildTubePanel(); refreshTube(); })));
-  const n=document.createElement('p'); n.className='tiny'; n.textContent='Tap a station dot (zoomed in) to see its name and lines. Line data © OpenStreetMap contributors.'; body.appendChild(n);
+  const n=document.createElement('p'); n.className='tiny'; n.textContent='Tap a station (zoomed in) to see its name and lines. White dots are interchanges. Line data © OpenStreetMap contributors.'; body.appendChild(n);
 }
 map.on('zoomend',refreshTube);
 $('btnTube').onclick=()=>openPanel('tubePanel');
