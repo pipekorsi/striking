@@ -478,7 +478,7 @@ TUBE.lines.forEach(l=>{
 const tubeSel=new Set((saved&&saved.tube)||[]);
 const DARK_CHIP=['#FFD300','#F3A9BB','#95CDBA','#A0A5A9'];
 function stationPopup(st){
-  const chips=st.l.map(([k])=>{const l=lineByKey[k]; return `<span class="stn" style="background:${l.c};color:${DARK_CHIP.includes(l.c)?'#111':'#fff'}">${esc(l.n)}</span>`;}).join(' ');
+  const chips=[...new Set(st.l.map(e=>e[0]))].map(k=>{const l=lineByKey[k]; return `<span class="stn" style="background:${l.c};color:${DARK_CHIP.includes(l.c)?'#111':'#fff'}">${esc(l.n)}</span>`;}).join(' ');
   return `<div class="pop"><h4>${esc(st.n)}</h4><div class="badges">${chips}</div></div>`;
 }
 /* Where lines share a track each vertex carries a "lane" number; here the lanes are turned into a sideways offset in screen pixels. */
@@ -519,8 +519,7 @@ function refreshTube(){
   stLayer.clearLayers();
   if(z>=12) TUBE.stations.forEach(st=>{
     const vis=st.l.filter(([k])=>tubeSel.has(k)); if(!vis.length) return;
-    const H=map.project([st.lat,st.lon],z);
-    const J=vis.map(([k,ci,vi])=>({k,p:nearestOnChain(gfx[k].px[ci],vi,H)}));
+    const J=vis.map(([k,ci,vi])=>({k,p:gfx[k].px[ci][vi]}));   // the station is an exact vertex of each of its lines
     if(J.length>=2){
       // interchange: white hub at the station's real position, joined to each line's route by the shortest (perpendicular) link
       J.forEach(({k,p})=>{

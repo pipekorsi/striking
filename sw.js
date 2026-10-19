@@ -1,5 +1,5 @@
 // Service worker: lets the app install and work offline (except map tiles you haven't viewed before).
-const VERSION = 'v4';
+const VERSION = 'v7';
 const SHELL = `striking-shell-${VERSION}`;
 const TILES = 'striking-tiles';
 const LIBS = 'striking-libs';
